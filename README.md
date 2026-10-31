@@ -13,7 +13,7 @@ The project has two parts:
 | Part | File | Purpose |
 |---|---|---|
 | Forecasting script | `sales_forecasting_arima.py` | The real analysis: loads data, tests it, fits SARIMA, evaluates, forecasts |
-| Dashboard preview | `sales_forecast_dashboard.html` | A frontend mockup showing how the results would be presented to a user |
+| Dashboard | `sales_forecast_dashboard.html` | An interactive frontend where you can upload a sales CSV and explore a quick forecast in the browser |
 
 ---
 
@@ -51,9 +51,12 @@ The script follows the standard ARIMA workflow:
 
 ### The dashboard
 
-`sales_forecast_dashboard.html` is a single-page frontend with a sidebar (forecast horizon, test size, auto or manual mode) and two tabs: **Forecast** (key figures, metrics, chart, forecast table, business insight) and **Diagnostics** (residual plot and verdict).
+`sales_forecast_dashboard.html` is a single-page frontend with a sidebar (CSV upload, forecast horizon, test size, auto or manual mode) and two tabs: **Forecast** (key figures, metrics, chart, forecast table, business insight) and **Diagnostics** (residual plot and verdict).
 
-> **Important:** the dashboard is a **preview**. It runs on built-in sample data and uses a simplified seasonal smoothing model in the browser. It does not run the SARIMA script, and its CSV upload box is not connected yet. See "Future improvements" for how to make it fully functional.
+- **CSV upload:** click the upload box or drag a CSV onto it. The file is read in your browser and is not uploaded anywhere. Pick the date and sales columns (the dashboard guesses them), and sales are added up by month.
+- **Sample data:** until you upload a file, it shows built-in sample data. Click **Use sample data** to return to it.
+
+> **Important:** the dashboard does **not** run the SARIMA script. It forecasts in the browser with a simplified seasonal smoothing model, so its numbers will differ from the script's results. Use the Python script for your final SARIMA results.
 
 ---
 
@@ -103,7 +106,20 @@ A free Kaggle account is needed to download it.
 3. Confirm the file has columns named **`Order Date`** and **`Sales`**.
 4. Run the script.
 
-### Using your own data
+### Using the dashboard with a dataset
+
+1. Open `sales_forecast_dashboard.html` in a browser.
+2. Click the upload box (or drag your CSV onto it).
+3. Check the **Date column** and **Sales column** dropdowns and change them if the guess is wrong.
+4. The Forecast and Diagnostics tabs update with your data.
+
+Notes:
+- At least **27 months** of data are needed.
+- Dates like `03/04/2016` are read as month first. If any date has a first number above 12, the dashboard switches to day first.
+- Missing months are filled with the previous month's value.
+- Files with non-UTF-8 encoding (such as the Superstore CSV) are handled automatically.
+
+### Using your own data with the Python script
 
 Any sales CSV works if it has a date column and a sales amount column.
 
@@ -143,7 +159,7 @@ The same method applies beyond retail: electricity demand, website traffic, air 
 - **Sales history only.** The model cannot see promotions, holidays, price changes, competitors, or economic conditions.
 - **Assumes the past repeats.** Sudden shocks (a pandemic, a new competitor) are not predicted.
 - **One series at a time.** The base version forecasts total sales, not each category or region.
-- **Dashboard is a preview.** It uses sample data and a simplified model (see section 3).
+- **Dashboard uses a simplified model.** It forecasts in the browser with seasonal smoothing, so its numbers differ from the SARIMA script's results (see section 3).
 
 ---
 
@@ -157,7 +173,7 @@ The same method applies beyond retail: electricity demand, website traffic, air 
 - Forecast by **category, region, or segment**
 
 **Dashboard**
-- Make the **CSV upload work**: read the file in the browser, aggregate by month, and let the user pick the date and sales columns
+- Make the dashboard show the **real SARIMA results**, for example by loading `future_sales_forecast.csv`
 - Build the full app in **Streamlit** so it runs the real SARIMA code
 - Add **download buttons** for the forecast table and charts
 - Add a **what-if panel** (for example, "sales grow 10% more than forecast")
