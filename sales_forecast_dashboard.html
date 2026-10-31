@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Retail Sales Forecast Dashboard</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#1c2330;--muted:#6b7585;--line:#e3e7ed;--c1:#2563eb;--c2:#111827;--c3:#e11d48;--ok:#15803d;--bad:#b45309;--band:rgba(225,29,72,.14);
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0f141b;--card:#171e28;--text:#e8ecf2;--muted:#93a0b3;--line:#273142;--c1:#60a5fa;--c2:#e8ecf2;--c3:#fb7185;--ok:#4ade80;--bad:#fbbf24;--band:rgba(251,113,133,.18)}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0f141b;--card:#171e28;--text:#e8ecf2;--muted:#93a0b3;--line:#273142;--c1:#60a5fa;--c2:#e8ecf2;--c3:#fb7185;--ok:#4ade80;--bad:#fbbf24;--band:rgba(251,113,133,.18)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{display:grid;grid-template-columns:260px 1fr;gap:16px;max-width:1100px;margin:0 auto;padding:16px}
+@media(max-width:800px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:0 0 10px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 4px}
+label b{color:var(--text);float:right}
+input[type=range]{width:100%}
+select,button{font:inherit;width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+.run{margin-top:16px;background:var(--c1);color:#fff;border:0;font-weight:600;cursor:pointer}
+.drop{border:1.5px dashed var(--line);border-radius:10px;padding:10px;font-size:13px;color:var(--muted);text-align:center}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{width:auto;padding:6px 14px;cursor:pointer}
+.tabs button.on{background:var(--c1);color:#fff;border-color:var(--c1)}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:800px){.grid{grid-template-columns:repeat(2,1fr)}}
+.m{background:var(--bg);border-radius:10px;padding:10px}.m span{font-size:12px;color:var(--muted)}.m div{font-size:20px;font-weight:700}
+.chart{overflow-x:auto}svg{width:100%;min-width:560px;height:auto;display:block}
+.leg{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:6px}
+.leg i{display:inline-block;width:12px;height:3px;margin-right:5px;vertical-align:middle}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;background:var(--bg)}
+.tip{background:var(--bg);border-left:3px solid var(--c1);padding:10px 12px;border-radius:6px;margin-top:12px;font-size:14px}
+.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+.note{font-size:12px;color:var(--muted);margin-top:12px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside class="card">
+  <h1>📈 Sales Forecast</h1>
+  <p class="sub">Retail demand planning preview</p>
+  <div class="drop">Upload CSV (Order Date, Sales)<br><small>Preview uses sample monthly data</small></div>
+  <label>Forecast horizon <b id="hv">12</b></label>
+  <input type="range" id="h" min="3" max="24" value="12">
+  <label>Test set (months) <b id="tv">6</b></label>
+  <input type="range" id="t" min="3" max="12" value="6">
+  <label>Model mode</label>
+  <select id="mode"><option value="auto">Auto (best fit)</option><option value="manual">Manual</option></select>
+  <div id="man" class="hide">
+    <label>Level smoothing α <b id="av">0.30</b></label><input type="range" id="a" min="0.05" max="0.95" step="0.05" value="0.3">
+    <label>Seasonal smoothing γ <b id="gv">0.30</b></label><input type="range" id="g" min="0.05" max="0.95" step="0.05" value="0.3">
+  </div>
+  <button class="run" id="run">Run forecast</button>
+</aside>
+<main>
+  <div class="tabs" id="tabs">
+    <button data-t="fc" class="on">Forecast</button><button data-t="dg">Diagnostics</button>
+  </div>
+  <section id="fc" class="card"></section>
+  <section id="dg" class="card hide"></section>
+</main>
+</div>
+<script>
+const MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],M=12;
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const r=rng(42),gauss=()=>Math.sqrt(-2*Math.log(r()+1e-9))*Math.cos(2*Math.PI*r());
+const N=48,Y=[...Array(N)].map((_,i)=>20000+25000*i/(N-1)+8000*Math.sin(2*Math.PI*((i%12)+1-3)/12)+2500*gauss());
+const lbl=i=>MN[i%12]+" "+(2014+Math.floor(i/12));
+const $=id=>document.getElementById(id),f0=x=>Math.round(x).toLocaleString("en-IN");
+
+function hw(y,a,b,g,h){
+  const n=y.length,m1=y.slice(0,M).reduce((s,v)=>s+v,0)/M,m2=y.slice(M,2*M).reduce((s,v)=>s+v,0)/M;
+  let L=m1,T=(m2-m1)/M;const S=y.slice(0,M).map(v=>v-m1),e=[];
+  for(let t=0;t<n;t++){const k=t%M,p=L+T+S[k];if(t>=M)e.push(y[t]-p);
+    const l0=L;L=a*(y[t]-S[k])+(1-a)*(L+T);T=b*(L-l0)+(1-b)*T;S[k]=g*(y[t]-L)+(1-g)*S[k];}
+  const sg=Math.sqrt(e.reduce((s,v)=>s+v*v,0)/e.length);
+  const pred=[],lo=[],hi=[];
+  for(let k=1;k<=h;k++){const p=L+k*T+S[(n+k-1)%M],w=1.96*sg*Math.sqrt(1+0.15*(k-1));pred.push(p);lo.push(p-w);hi.push(p+w);}
+  return{pred,lo,hi,sg,e};
+}
+function pick(train){
+  if($("mode").value==="manual")return[+$("a").value,+$("g").value];
+  let best=[.3,.3],bs=1e18;
+  for(let a=.1;a<=.91;a+=.1)for(let g=.1;g<=.91;g+=.1){const q=hw(train,a,.05,g,1);const s=q.e.reduce((u,v)=>u+v*v,0);if(s<bs){bs=s;best=[a,g]}}
+  return best;
+}
+function chart(parts,n,h){
+  const W=720,H=300,pl=54,pr=10,pt=10,pb=26,tot=n+h;
+  const all=parts.flatMap(p=>p.v.filter(x=>x!=null));let mn=Math.min(...all),mx=Math.max(...all);const pad=(mx-mn)*.08;mn-=pad;mx+=pad;
+  const X=i=>pl+(W-pl-pr)*i/(tot-1),Yy=v=>pt+(H-pt-pb)*(1-(v-mn)/(mx-mn));
+  let s=`<svg viewBox="0 0 ${W} ${H}">`;
+  for(let k=0;k<=4;k++){const v=mn+(mx-mn)*k/4,y=Yy(v);s+=`<line x1="${pl}" x2="${W-pr}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${pl-6}" y="${y+4}" text-anchor="end" font-size="11" fill="var(--muted)">${Math.round(v/1000)}k</text>`}
+  for(let i=0;i<tot;i+=12)s+=`<text x="${X(i)}" y="${H-8}" font-size="11" fill="var(--muted)">${2014+i/12}</text>`;
+  parts.forEach(p=>{
+    if(p.band){const up=p.v.map((_,j)=>`${X(p.s+j)},${Yy(p.band[1][j])}`),dn=p.v.map((_,j)=>`${X(p.s+j)},${Yy(p.band[0][j])}`).reverse();s+=`<polygon points="${up.concat(dn).join(" ")}" fill="var(--band)"/>`}
+    s+=`<polyline fill="none" stroke="${p.c}" stroke-width="${p.w||2}" ${p.d?'stroke-dasharray="5 4"':""} points="${p.v.map((v,j)=>`${X(p.s+j)},${Yy(v)}`).join(" ")}"/>`;
+  });
+  return s+"</svg>";
+}
+const metric=(l,v)=>`<div class="m"><span>${l}</span><div>${v}</div></div>`;
+const leg=a=>`<div class="leg">${a.map(x=>`<span><i style="background:${x[0]}"></i>${x[1]}</span>`).join("")}</div>`;
+
+function run(){
+  const h=+$("h").value,ts=+$("t").value,tr=Y.slice(0,N-ts),te=Y.slice(N-ts);
+  const[a,g]=pick(tr);$("av").textContent=a.toFixed(2);$("gv").textContent=g.toFixed(2);
+  const A=hw(tr,a,.05,g,ts),B=hw(Y,a,.05,g,h);
+  const rmse=Math.sqrt(te.reduce((s,v,i)=>s+(v-A.pred[i])**2,0)/ts),mae=te.reduce((s,v,i)=>s+Math.abs(v-A.pred[i]),0)/ts;
+  const mape=te.reduce((s,v,i)=>s+Math.abs((v-A.pred[i])/v),0)/ts*100,nv=te.reduce((s,v,i)=>s+Math.abs((v-Y[N-ts+i-M])/v),0)/ts*100;
+  const tot=Y.reduce((s,v)=>s+v,0);
+  const kpis=`<div class="grid">${metric("Total sales","₹"+f0(tot))}${metric("Avg / month","₹"+f0(tot/N))}${metric("Months",N)}${metric("Range","Jan 2014 – Dec 2017")}</div>`;
+  const ci=B.pred.indexOf(Math.max(...B.pred)),pk=lbl(N+ci);
+  $("fc").innerHTML=`<h2>Forecast</h2>${kpis}<div class="grid">${metric("MAPE",mape.toFixed(1)+"%")}${metric("RMSE",f0(rmse))}${metric("MAE",f0(mae))}${metric("Seasonal-naive MAPE",nv.toFixed(1)+"%")}</div>
+  <div class="chart">${chart([{v:Y,s:0,c:"var(--c1)"},{v:A.pred,s:N-ts,c:"var(--c3)",d:1,w:2},{v:B.pred,s:N,c:"var(--c3)",band:[B.lo,B.hi]}],N,h)}</div>
+  ${leg([["var(--c1)","History"],["var(--c3)","Forecast (test + future) with 95% band"]])}
+  <div class="tip">Expected peak: <b>${pk}</b> at about ₹${f0(B.pred[ci])}. ${mape<nv?"The model beats the seasonal-naive baseline.":"The model does not beat the baseline; try Manual mode."}</div>
+  <div class="tbl"><table><tr><th>Month</th><th>Forecast</th><th>Lower 95%</th><th>Upper 95%</th></tr>${B.pred.map((p,i)=>`<tr><td>${lbl(N+i)}</td><td>${f0(p)}</td><td>${f0(B.lo[i])}</td><td>${f0(B.hi[i])}</td></tr>`).join("")}</table></div>`;
+  const e=A.e,me=e.reduce((s,v)=>s+v,0)/e.length;let c0=0,c1=0;e.forEach((v,i)=>{c0+=(v-me)**2;if(i)c1+=(v-me)*(e[i-1]-me)});
+  const r1=c1/c0,lim=2/Math.sqrt(e.length),ok=Math.abs(r1)<lim,mx=Math.max(...e.map(Math.abs));
+  $("dg").innerHTML=`<h2>Residual diagnostics</h2><div class="grid">${metric("Lag-1 autocorr.",r1.toFixed(2))}${metric("Threshold","±"+lim.toFixed(2))}${metric("Residual std",f0(A.sg))}${metric("Verdict",`<span class="badge" style="color:var(${ok?"--ok":"--bad"})">${ok?"White noise":"Check model"}</span>`)}</div>
+  <div class="chart"><svg viewBox="0 0 720 200">${e.map((v,i)=>{const x=54+(656)*i/(e.length-1),y=100-90*v/mx;return`<line x1="${x}" x2="${x}" y1="100" y2="${y}" stroke="var(--c1)" stroke-width="4"/>`}).join("")}<line x1="54" x2="710" y1="100" y2="100" stroke="var(--muted)"/><text x="54" y="14" font-size="11" fill="var(--muted)">One-step-ahead residuals</text></svg></div>
+  <div class="tip">${ok?"Residuals show no strong autocorrelation, so the model has captured the trend and seasonality.":"Residuals still show structure. Adjust the smoothing settings or add seasonal terms."}</div>`;
+}
+$("tabs").onclick=e=>{const t=e.target.dataset.t;if(!t)return;[...$("tabs").children].forEach(b=>b.classList.toggle("on",b===e.target));["fc","dg"].forEach(i=>$(i).classList.toggle("hide",i!==t))};
+$("h").oninput=()=>$("hv").textContent=$("h").value;$("t").oninput=()=>$("tv").textContent=$("t").value;
+$("mode").onchange=()=>{$("man").classList.toggle("hide",$("mode").value!=="manual");run()};
+["a","g"].forEach(i=>$(i).oninput=()=>{$(i+"v").textContent=(+$(i).value).toFixed(2)});
+$("run").onclick=run;run();
+</script>
+</body>
+</html>
